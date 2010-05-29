@@ -1,0 +1,351 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+  <head>
+    <title>@twitterapi Annotation formatter</title>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.1/jquery-ui.min.js"></script>
+    <script>
+      var CLASS_LABEL = 'label';
+      var CLASS_ANNOTATION = 'tweet_annotation';
+      var CLASS_NAMESPACE = 'tweet_annotation_namespace';
+      var CLASS_ATTRIBUTE_VALUES = 'tweet_annotation_attribute_values';
+      var CLASS_ATTRIBUTE_VALUE = 'tweet_annotation_attribute_value';
+      var CLASS_ATTRIBUTES = 'tweet_annotation_attributes';
+      var CLASS_ATTRIBUTE = 'tweet_annotation_attribute';
+      var CLASS_VALUE = 'tweet_annotation_value';
+      var CLASS_ADD_LINK = 'add_link';
+      var CLASS_REMOVE_LINK = 'remove_link';
+
+      function createDiv(className) {
+        return $('<div class="' + className + '"/>');
+      }
+
+      function createLabel(text) {
+        return $('<span class="' + CLASS_LABEL + '">' + text + '</span>');
+      }
+
+      function createTextField(name) {
+        return $('<input type="text" name="' + name + '"/>');
+      }
+
+      function attachAddLink(selector, f) {
+        var addLink = $('<div class="' + CLASS_ADD_LINK + '">Add</span>');
+        addLink.click(f);
+        addLink.addClass('whiteout_text');
+        selector.hover(function(e) {
+          addLink.removeClass('whiteout_text');
+        }, function(e) {
+          addLink.addClass('whiteout_text');
+        });
+        addLink.prependTo(selector);
+      }
+
+      function attachRemoveLink(selector, f) {
+        var removeLink = $('<div class="' + CLASS_REMOVE_LINK + '">Remove</span>');
+        removeLink.click(f);
+        removeLink.addClass('whiteout_text');
+        selector.hover(function(e) {
+          removeLink.removeClass('whiteout_text');
+        }, function(e) {
+          removeLink.addClass('whiteout_text');
+        });
+        removeLink.appendTo(selector);
+      }
+
+      function appendLabeledTextField(selector, text, name) {
+        createLabel(text).appendTo(selector);
+        var textField = createTextField(name);
+        textField.appendTo(selector);
+        return textField;
+      }
+
+      function newAnnotationAttributeValue() {
+        var attributeValue = createDiv(CLASS_ATTRIBUTE_VALUE);
+        var attribute = createDiv(CLASS_ATTRIBUTE);
+        var attributeTextField = appendLabeledTextField(attribute, 'Attribute', 'attribute');
+        attributeTextField.keyup(function() { generateCURLCommand(); });
+        var value = createDiv(CLASS_VALUE);
+        var valueTextField = appendLabeledTextField(value, 'Value', 'value');
+        valueTextField.keyup(function() { generateCURLCommand(); });
+        attribute.appendTo(attributeValue);
+        value.appendTo(attributeValue);
+        attachAddLink(attributeValue, function() {
+          var nsAttrValue = newAnnotationAttributeValue();
+          nsAttrValue.insertAfter(attributeValue);
+          nsAttrValue.parent().sortable({stop: function(event, ui) { generateCURLCommand() }});
+          nsAttrValue.fadeIn('slow');
+        });
+        attachRemoveLink(attributeValue, function() {
+          if(attributeValue.siblings().length > 0)
+            attributeValue.fadeOut('slow', function() {
+              attributeValue.remove();
+              generateCURLCommand();
+            });
+        });
+        attributeValue.hide();
+        return attributeValue;
+      }
+
+      function newAnnotationNamespace(fadeIn) {
+        var annotationField = createDiv(CLASS_ANNOTATION);
+        var namespaceField = createDiv(CLASS_NAMESPACE);
+        var namespaceTextField = appendLabeledTextField(namespaceField, 'Annotation type', 'namespace');
+        namespaceTextField.keyup(function() { generateCURLCommand(); });
+        namespaceField.appendTo(annotationField);
+        var attributeValuesField = createDiv(CLASS_ATTRIBUTE_VALUES);
+        attributeValuesField.appendTo(annotationField);
+        namespaceTextField.keyup(function() {
+          if(attributeValuesField.children().size() == 0) {
+            var nsAttrValue = newAnnotationAttributeValue();
+            nsAttrValue.appendTo(attributeValuesField);
+            nsAttrValue.fadeIn('slow');
+          }
+        });
+        attachAddLink(namespaceField, function() {
+          var nsDiv = newAnnotationNamespace(true);
+          nsDiv.insertAfter(annotationField);
+          nsDiv.fadeIn('slow');
+          $('#tweet_annotations').sortable({stop: function(event, ui) { generateCURLCommand() }});
+        });
+        attachRemoveLink(namespaceField, function() {
+          if(annotationField.siblings().length > 0)
+            annotationField.fadeOut('slow', function() {
+              annotationField.remove();
+              generateCURLCommand();
+            });
+        });
+        if(fadeIn)
+          annotationField.hide();
+        return annotationField;
+      }
+
+      function tweetTextInput() {
+        return $('input[name="tweet_text"]');
+      }
+
+      function generateCURLCommand() {
+        var tweetText = escape(tweetTextInput().val());
+        var annotations = [];
+        $('#tweet_annotations > .' + CLASS_ANNOTATION).each(function(nsindex, nselement) {
+          var jnselement = $(nselement);
+          var namespaceText = jnselement.find('input[name="namespace"]').val();
+          if(namespaceText != '') {
+            var avs = [];
+            jnselement.find('.' + CLASS_ATTRIBUTE_VALUE).each(function(index, avelement) {
+              var javelement = $(avelement);
+              var attributeElementText = javelement.find('input[name="attribute"]').val();
+              var valueElementText = javelement.find('input[name="value"]').val();
+              if(attributeElementText != '')
+                avs.push('"' + attributeElementText + '":"' + valueElementText + '"');
+            });
+            if(avs.length > 0)
+              annotations.push('{"' + namespaceText + '":{' + avs.join(',') + '}}');
+          }
+        });
+        annotations = '[' + annotations.join(',') + ']';
+
+        var statusText = 'status=' + tweetText;
+        if(annotations != '')
+          statusText += '&annotations=' + escape(annotations);
+        var cmd = '';
+        if(tweetText != '')
+          cmd += statusText;
+        $('#post_contents').text(cmd);
+        $('#curl_post_contents').text(cmd);
+        $('#annotation_json').text(annotations);
+      }
+
+      $(document).ready(function() {
+        var annotations = $('#tweet_annotations');
+        annotations.append(newAnnotationNamespace(false));
+        $('input[name="namespace"]').val('website').keyup();
+        $('input[name="attribute"]').val('url');
+        $('input[name="value"]').val('http://dev.twitter.com');
+        generateCURLCommand();
+        tweetTextInput().keyup(function() { generateCURLCommand(); });
+      });
+    </script>
+    <style type="text/css">
+      body {
+        font-family: 'Helvetica Neue', Helvetica, Verdana, sans-serif;
+        font-size: 0.8em;
+        color: #555555;
+        margin-left: 10%;
+        margin-right: 10%;
+      }
+
+      pre, span#annotation_json, span#post_contents, span#curl_command {
+        font-family: 'Courier New', monospace;
+      }
+
+      pre {
+        margin-left: 20px
+      }
+
+      div#tweet_parameters {
+        margin: 15px;
+        padding: 15px;
+        border: 2px solid #dddddd;
+      }
+
+      input {
+        border: 1px solid #dddddd;
+        margin-left: 5px;
+        margin-right: 5px;
+        margin-top: 2px;
+        width: 200px;
+        font-size: 1.1em;
+      }
+
+      span.label {
+        font-weight: bold;
+        font-size: 1.1em;
+        margin-top: 2px;
+      }
+
+      span.tweet_text_label {
+        display: block;
+      }
+
+      input.text_wide {
+        width: 100%;
+        margin-left: 0px;
+        margin-right: 0px;
+      }
+
+      div.tweet_annotation {
+        margin-left: 40px;
+      }
+
+      div.tweet_annotation_attribute_value {
+        margin-left: 40px;
+      }
+
+      div.tweet_annotation_namespace {
+        display: inline-block;
+      }
+
+      div.tweet_annotation_attribute {
+        display: inline-block;
+      }
+
+      div.tweet_annotation_value {
+        display: inline-block;
+      }
+
+      div.add_link {
+        display: inline-block;
+        font-size: 0.7em;
+        margin-left: -20px;
+        width: 20px;
+        vertical-align: 3px;
+        text-transform: lowercase;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      div.remove_link {
+        display: inline-block;
+        font-size: 0.7em;
+        margin-left: 4px;
+        vertical-align: 3px;
+        text-transform: lowercase;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      div.whiteout_text {
+        color: white;
+      }
+
+      h3 {
+        font-size: 1.1em;
+        font-style: italic;
+      }
+
+      div.annotations_output p {
+        margin-top: -1em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>@twitterapi Annotations</h1>
+    <p>
+      @<a href="http://twitter.com/twitterapi">twitterapi</a>'s <a
+      href="http://mehack.com/extremely-preliminary-look-at-twitters-annota">Annotations</a>
+      use a strict JSON format to specify the annotation itself.  This format looks like:
+    </p>
+<pre>
+[
+  {
+    "type<sub>1</sub>" : {
+      "attribute<sub>1,1</sub>" : "value<sub>1,1</sub>",
+      ...
+      "key<sub>1,x</sub>" : "value<sub>1,x</sub>"
+    }
+  },
+  ...
+  {
+    "type<sub>n</sub>" : {
+      "attribute<sub>n,1</sub>" : "value<sub>n,1</sub>",
+      ...
+      "attribute<sub>n,y</sub>" : "value<sub>n,y</sub>"
+    }
+  }
+]
+</pre>
+    <p>
+      In this, you can have repeated <span class="code">type</span>, but all
+      the <span class="code">attributes</span> within a type must be unique.
+    </p>
+
+    <h2>Annotations formatter</h2>
+    <p>
+      To help you out, here's a very simple, but interactive, attribute
+      creator. You can specify the tweet text, and all the attributes you
+      may want to create, and this will create the JSON for the annotation,
+      the form URL-encoded payload that can be POST-ed to
+      <a
+      href="http://dev.twitter.com/doc/post/statuses/update">statuses/update</a>,
+      as well as a command that can simply be cut and pasted to run a
+      <a href="http://curl.haxx.se/">cURL</a> command.
+    </p>
+    <p>
+      Just enter in the tweet text, add annotations by adding/removing types,
+      attributes, and values. You can also drag to resort your annotations if
+      ordering matters to you.  Whatever you add here, will get formatted
+      appropriately.
+    </p>
+
+    <div id="tweet_parameters">
+      <div id="tweet_text">
+        <span class="label tweet_text_label">Tweet text</span>
+        <input type="text" class="text_wide" name="tweet_text" value="Check out @twitterapi's new developer portal!"/>
+      </div>
+      <div id="tweet_annotations"></div>
+    </div>
+
+    <div id="json" class="annotations_output">
+      <h3>JSON</h3>
+      <p>
+        The JSON version of the annotation specified.
+      </p>
+      <span id="annotation_json">&nbsp;</span>
+    </div>
+    <div id="post_body" class="annotations_output">
+      <h3>POST body</h3>
+      <p>
+        The form URL-encoded version of the annotation, suitable for POSTing to the @twitterapi.
+      </p>
+      <span id="post_contents"><br/></span>
+    </div>
+    <div id="curl_command" class="annotations_output">
+      <h3>cURL command</h3>
+      <p>
+        A raw command that can be cut and paste to your command line -- be sure to replace the USERNAME:PASSWORD.
+      </p>
+      <span id="curl_command">curl -u USERNAME:PASSWORD -d <span id="curl_post_contents"><i>data</i></span> https://api.twitter.com/1/statuses/update.json</span>
+    </div>
+  </body>
+</html>
